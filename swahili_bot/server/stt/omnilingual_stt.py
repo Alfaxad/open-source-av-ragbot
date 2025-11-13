@@ -20,8 +20,8 @@ app = modal.App("swahili-omnilingual-transcription")
 omnilingual_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git")
-    .pip_install(
-        "omnilingual-asr",  # This will install the correct torch version
+    .uv_pip_install(
+        "omnilingual-asr",
         "numpy",
         "websockets",
         "fastapi[standard]",

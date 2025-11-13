@@ -16,7 +16,7 @@ MODEL_NAME = "CohereForAI/aya-101"
 aya_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git")
-    .pip_install(
+    .uv_pip_install(
         "vllm==0.8.2",
         "huggingface_hub[hf_transfer]",
         "fastapi[standard]",

@@ -17,7 +17,7 @@ app = modal.App("swahili-csm-tts")
 swahili_tts_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git", "ffmpeg")
-    .pip_install(
+    .uv_pip_install(
         "torch",
         "transformers",
         "accelerate",
