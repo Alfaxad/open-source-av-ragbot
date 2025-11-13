@@ -42,7 +42,7 @@ with swahili_tts_image.imports():
 
 @app.cls(
     image=swahili_tts_image,
-    gpu=modal.gpu.A10G(),
+    gpu="A10G",
     enable_memory_snapshot=True,
     region=SERVICE_REGIONS,
     scaledown_window=10,

@@ -25,14 +25,17 @@ aya_image = (
         "huggingface_hub[hf_transfer]",
         "fastapi[standard]",
     )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
+    .env({
+        "HF_HUB_ENABLE_HF_TRANSFER": "1",
+        "VLLM_USE_V1": "0",  # Aya-101 (T5) requires V0 engine
+    })
 )
 
 UVICORN_PORT = 8000
 
 @app.cls(
     image=aya_image,
-    gpu=modal.gpu.A100(count=1, size="40GB"),
+    gpu="A100-40GB",
     enable_memory_snapshot=True,
     region=SERVICE_REGIONS,
     scaledown_window=10,
