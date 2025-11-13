@@ -23,6 +23,10 @@ bot_image = (
     )
     .env({"PATH": "/root/.cargo/bin:$PATH"})
     .uv_pip_install(
+        "transformers>=4.30.0",  # Install newer version first to avoid old tokenizers
+        "torch",
+    )
+    .uv_pip_install(
         "pipecat-ai[webrtc,openai,silero,local-smart-turn,noisereduce,soundfile]==0.0.92",
         "websocket-client",
         "aiofiles",
