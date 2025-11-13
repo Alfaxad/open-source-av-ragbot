@@ -22,11 +22,16 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import (
     OpenAILLMContext,
 )
-from pipecat.processors.aggregators.llm_response import LLMUserAggregator
-from pipecat.services.openai import OpenAILLMService
-from pipecat.transports.services.small_webrtc import SmallWebRTCService
-from pipecat.vad.silero import SileroVAD
-from pipecat.vad.local_smart_turn_analyzer_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
+from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
+from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+from pipecat.transports.base_transport import TransportParams
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor
+from pipecat.frames.frames import LLMRunFrame
 import modal
 
 from server.bot.services.modal_services import ModalTunnelManager
@@ -103,17 +108,25 @@ async def run_bot(webrtc_connection, speaker_id: int = 22):
         cls_name="AyaLLM",
     )
 
-    # Initialize WebRTC transport
-    transport = SmallWebRTCService(
-        connection=webrtc_connection,
+    # Configure transport parameters
+    transport_params = TransportParams(
+        audio_in_enabled=True,
         audio_in_sample_rate=_AUDIO_INPUT_SAMPLE_RATE,
-        audio_out_sample_rate=_AUDIO_OUTPUT_SAMPLE_RATE,
         audio_out_enabled=True,
+        audio_out_sample_rate=_AUDIO_OUTPUT_SAMPLE_RATE,
+        vad_analyzer=SileroVADAnalyzer(
+            params=VADParams(stop_secs=0.2)
+        ),
+        turn_analyzer=LocalSmartTurnAnalyzerV3(
+            params=SmartTurnParams()
+        ),
     )
 
-    # Initialize VAD for turn detection
-    vad = SileroVAD(stop_secs=0.2)  # 200ms of silence to detect turn end
-    turn_analyzer = LocalSmartTurnAnalyzerV3(vad_analyzer=vad)
+    # Initialize WebRTC transport
+    transport = SmallWebRTCTransport(
+        webrtc_connection=webrtc_connection,
+        params=transport_params,
+    )
 
     # Initialize STT service
     stt = ModalOmnilingualSTTService(
@@ -145,26 +158,28 @@ async def run_bot(webrtc_connection, speaker_id: int = 22):
         },
     ]
 
-    context = OpenAILLMContext(
-        messages=initial_messages,
+    context = OpenAILLMContext(messages=initial_messages)
+
+    # Create context aggregator using LLM service
+    context_aggregator = llm.create_context_aggregator(
+        context,
+        user_params=LLMUserAggregatorParams(aggregation_timeout=0.05),
     )
 
-    # Create LLM aggregator for managing user input
-    llm_aggregator = LLMUserAggregator(
-        context=context,
-        timeout_secs=0.05,  # Very short timeout for responsiveness
-    )
+    # RTVI events for Pipecat client UI
+    rtvi = RTVIProcessor()
 
     # Build the pipeline
     pipeline = Pipeline(
         [
             transport.input(),  # WebRTC input (audio)
-            turn_analyzer,  # VAD + turn detection
+            rtvi,  # RTVI event handling
             stt,  # Speech-to-text
-            llm_aggregator,  # Aggregate user messages
+            context_aggregator.user(),  # Aggregate user messages
             llm,  # Generate responses
             tts,  # Text-to-speech
             transport.output(),  # WebRTC output (audio)
+            context_aggregator.assistant(),  # Aggregate assistant responses
         ]
     )
 
@@ -174,33 +189,32 @@ async def run_bot(webrtc_connection, speaker_id: int = 22):
         params=PipelineParams(
             allow_interruptions=True,  # Allow user to interrupt bot
             enable_metrics=True,
-            enable_usage_metrics=True,
         ),
+        observers=[RTVIObserver(rtvi)],
     )
 
     # Event handlers
-    @transport.event_handler("on_client_ready")
-    async def on_client_ready(transport, client_ready):
+    @rtvi.event_handler("on_client_ready")
+    async def on_client_ready(rtvi):
         """Called when client is ready to start conversation."""
-        logger.info("Client ready, starting conversation")
-
-        # Send initial greeting (trigger LLM to speak)
-        await task.queue_frames([context.get_messages_frame()])
+        logger.info("Pipecat client ready.")
+        await rtvi.set_bot_ready()
+        await task.queue_frame(LLMRunFrame())
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         """Called when client first connects."""
-        logger.info("Client connected to Swahili bot")
+        logger.info("Pipecat client connected to Swahili bot")
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         """Called when client disconnects."""
-        logger.info("Client disconnected")
+        logger.info("Pipecat client disconnected")
         await task.cancel()
+        logger.info("Pipeline task cancelled.")
 
     # Run the pipeline
     runner = PipelineRunner()
-
     await runner.run(task)
 
-    logger.info("Swahili bot session completed")
+    logger.info("Swahili bot session completed.")

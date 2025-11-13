@@ -1,18 +1,24 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import react from "@vitejs/plugin-react-swc";
+import { defineConfig, loadEnv } from "vite";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
 
-export default defineConfig({
-  plugins: [react()],
-  root: __dirname,
-  build: {
-    outDir: path.resolve(__dirname, 'dist'),
-  },
-  server: {
-    port: 5173,
-    host: true,
-  },
-})
+  return {
+    plugins: [react()],
+    base: "/frontend/",
+    build: {
+      outDir: "dist",
+      assetsDir: "assets",
+    },
+    server: {
+      allowedHosts: true,
+      proxy: {
+        "/offer": {
+          target: env.VITE_API_URL,
+          changeOrigin: true,
+        },
+      },
+    },
+  };
+});
