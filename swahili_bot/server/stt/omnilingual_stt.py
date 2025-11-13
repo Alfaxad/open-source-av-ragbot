@@ -28,8 +28,7 @@ gpu_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("libsndfile1")
     .pip_install(
-        "omnilingual-asr==0.1.0",
-        "torch==2.5.1",
+        "omnilingual-asr==0.1.0",  # This will install required torch version
         "fastapi[standard]==0.115.4",
         "soundfile==0.12.1",
         "numpy==1.26.4",
