@@ -19,7 +19,8 @@ app = modal.App("swahili-voice-bot")
 
 # Frontend image - just copy the pre-built dist folder
 frontend_image = (
-    modal.Image.debian_slim()
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install("fastapi[standard]==0.115.4")
     .add_local_dir("client/dist", "/assets/client/dist")
 )
 
