@@ -10,7 +10,8 @@ import json
 import threading
 import modal
 
-from server import SERVICE_REGIONS
+# Regional configuration
+SERVICE_REGIONS = ["us-west-1", "us-sanjose-1", "westus"]
 
 app = modal.App("swahili-csm-tts")
 

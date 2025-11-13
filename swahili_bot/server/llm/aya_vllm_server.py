@@ -9,7 +9,8 @@ import modal
 import subprocess
 import asyncio
 
-from server import SERVICE_REGIONS
+# Regional configuration
+SERVICE_REGIONS = ["us-west-1", "us-sanjose-1", "westus"]
 
 app = modal.App("swahili-aya-llm")
 
