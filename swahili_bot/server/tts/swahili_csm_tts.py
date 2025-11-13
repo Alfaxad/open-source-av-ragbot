@@ -23,6 +23,7 @@ swahili_tts_image = (
         "accelerate",
         "numpy",
         "websockets",
+        "fastapi[standard]",
     )
 )
 

@@ -24,6 +24,7 @@ omnilingual_image = (
         "omnilingual-asr",  # This will install the correct torch version
         "numpy",
         "websockets",
+        "fastapi[standard]",
     )
 )
 

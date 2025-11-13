@@ -19,6 +19,7 @@ aya_image = (
     .pip_install(
         "vllm==0.8.2",
         "huggingface_hub[hf_transfer]",
+        "fastapi[standard]",
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
 )
