@@ -25,7 +25,7 @@ frontend_image = (
         "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -",
         "apt-get install -y nodejs",
     )
-    .copy_local_dir("client", "/assets/client")
+    .add_local_dir("client", "/assets/client")
     .workdir("/assets/client")
     .run_commands(
         "npm install",
