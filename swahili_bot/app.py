@@ -28,6 +28,7 @@ frontend_image = (
     .add_local_dir("client", "/assets/client", copy=True)
     .workdir("/assets/client")
     .run_commands(
+        "ls -la",  # Debug: verify files are present
         "npm install",
         "npm run build",
     )
