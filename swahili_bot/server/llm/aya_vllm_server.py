@@ -7,6 +7,9 @@ optimized with vLLM for fast inference in Swahili conversations.
 
 import modal
 import subprocess
+import asyncio
+
+from server import SERVICE_REGIONS
 
 app = modal.App("swahili-aya-llm")
 
@@ -24,10 +27,14 @@ aya_image = (
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
 )
 
+UVICORN_PORT = 8000
+
 @app.cls(
     image=aya_image,
     gpu=modal.gpu.A100(count=1, size="40GB"),
     enable_memory_snapshot=True,
+    region=SERVICE_REGIONS,
+    scaledown_window=10,
     timeout=60 * 30,  # 30 minutes
 )
 class AyaLLM:
@@ -36,6 +43,10 @@ class AyaLLM:
     @modal.enter(snap=True)
     def start_server(self):
         """Start the vLLM server."""
+        self.tunnel_ctx = None
+        self.tunnel = None
+        self.base_url = None
+
         print(f"Starting vLLM server for {MODEL_NAME}...")
 
         # Start vLLM server process
@@ -47,7 +58,7 @@ class AyaLLM:
             "--dtype", "auto",
             "--enable-chunked-prefill",
             "--enable-prefix-caching",
-            "--port", "8000",
+            "--port", str(UVICORN_PORT),
             "--host", "0.0.0.0",
         ]
 
@@ -61,7 +72,7 @@ class AyaLLM:
         max_retries = 60
         for i in range(max_retries):
             try:
-                response = requests.get("http://localhost:8000/health")
+                response = requests.get(f"http://localhost:{UVICORN_PORT}/health")
                 if response.status_code == 200:
                     print("vLLM server is ready!")
                     break
@@ -71,6 +82,14 @@ class AyaLLM:
             if i == max_retries - 1:
                 raise Exception("vLLM server failed to start")
 
+    @modal.enter(snap=False)
+    def _start_tunnel(self):
+        """Create tunnel to vLLM server."""
+        self.tunnel_ctx = modal.forward(UVICORN_PORT)
+        self.tunnel = self.tunnel_ctx.__enter__()
+        self.base_url = self.tunnel.url
+        print(f"Aya-101 LLM URL: {self.base_url}")
+
     @modal.exit()
     def stop_server(self):
         """Stop the vLLM server."""
@@ -78,11 +97,18 @@ class AyaLLM:
             self.process.terminate()
             self.process.wait()
 
-    @modal.web_server(port=8000)
-    def serve(self):
-        """Expose the vLLM server."""
-        # vLLM server is already running on port 8000
-        pass
+    @modal.method()
+    async def run_tunnel_client(self, d: modal.Dict):
+        """Share the base URL via Modal Dict."""
+        try:
+            print(f"Sending Aya-101 LLM url: {self.base_url}")
+            await d.put.aio("url", self.base_url)
+
+            while True:
+                await asyncio.sleep(1.0)
+
+        except Exception as e:
+            print(f"Error running tunnel client: {type(e)}: {e}")
 
 
 @app.local_entrypoint()
