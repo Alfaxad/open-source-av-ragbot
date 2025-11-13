@@ -9,8 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@pipecat-ai/client-js": "^0.4.0",
-    "@pipecat-ai/small-webrtc-transport": "^0.1.5",
+    "@pipecat-ai/client-js": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

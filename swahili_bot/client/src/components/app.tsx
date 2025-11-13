@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { SmallWebRTCTransport } from '@pipecat-ai/small-webrtc-transport';
+import { RTVIClient } from '@pipecat-ai/client-js';
 import './app.css';
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected';
