@@ -17,24 +17,10 @@ SERVICE_REGIONS = ["us-west-1", "us-sanjose-1", "westus"]
 # Define Modal app
 app = modal.App("swahili-voice-bot")
 
-# Frontend image with Node.js for building React app
+# Frontend image - just copy the pre-built dist folder
 frontend_image = (
     modal.Image.debian_slim()
-    .apt_install("curl")
-    .run_commands(
-        "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -",
-        "apt-get install -y nodejs",
-    )
-    .add_local_dir("client", "/assets/client", copy=True)
-    .workdir("/assets/client")
-    .run_commands(
-        "pwd",  # Show current directory
-        "ls -la",  # Show files in current directory
-        "test -f index.html && echo 'index.html found' || echo 'index.html NOT FOUND'",
-        "npm install",
-        "cat vite.config.ts",  # Show vite config
-        "npm run build",
-    )
+    .copy_local_dir("client/dist", "/assets/client/dist")
 )
 
 # Bot image with Pipecat and dependencies
