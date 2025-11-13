@@ -20,7 +20,7 @@ app = modal.App("swahili-voice-bot")
 # Frontend image - just copy the pre-built dist folder
 frontend_image = (
     modal.Image.debian_slim()
-    .copy_local_dir("client/dist", "/assets/client/dist")
+    .add_local_dir("client/dist", "/assets/client/dist")
 )
 
 # Bot image with Pipecat and dependencies
