@@ -28,8 +28,11 @@ frontend_image = (
     .add_local_dir("client", "/assets/client", copy=True)
     .workdir("/assets/client")
     .run_commands(
-        "ls -la",  # Debug: verify files are present
+        "pwd",  # Show current directory
+        "ls -la",  # Show files in current directory
+        "test -f index.html && echo 'index.html found' || echo 'index.html NOT FOUND'",
         "npm install",
+        "cat vite.config.ts",  # Show vite config
         "npm run build",
     )
 )
