@@ -11,7 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import json
 
-from swahili_bot.server.common.const import SERVICE_REGIONS
+# Regional configuration
+SERVICE_REGIONS = ["us-west-1", "us-sanjose-1", "westus"]
 
 # Define Modal app
 app = modal.App("swahili-voice-bot")
@@ -42,6 +43,7 @@ bot_image = (
         "loguru==0.7.2",
         "openai==1.57.2",
     )
+    .add_local_python_source("server")
 )
 
 MINUTES = 60
@@ -114,7 +116,7 @@ class BotServer:
         Args:
             connection_data: Modal Dict containing connection parameters
         """
-        from swahili_bot.server.bot.swahili_bot import run_bot
+        from server.bot.swahili_bot import run_bot
         from loguru import logger
 
         # Get connection parameters

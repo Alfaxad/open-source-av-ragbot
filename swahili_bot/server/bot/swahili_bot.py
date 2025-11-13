@@ -29,14 +29,14 @@ from pipecat.vad.silero import SileroVAD
 from pipecat.vad.local_smart_turn_analyzer_v3 import LocalSmartTurnAnalyzerV3
 import modal
 
-from swahili_bot.server.bot.services.modal_services import ModalTunnelManager
-from swahili_bot.server.bot.services.modal_omnilingual_service import (
+from server.bot.services.modal_services import ModalTunnelManager
+from server.bot.services.modal_omnilingual_service import (
     ModalOmnilingualSTTService,
 )
-from swahili_bot.server.bot.services.modal_swahili_tts_service import (
+from server.bot.services.modal_swahili_tts_service import (
     ModalSwahiliTTSService,
 )
-from swahili_bot.server.bot.services.modal_aya_service import ModalAyaLLMService
+from server.bot.services.modal_aya_service import ModalAyaLLMService
 
 
 # Audio configuration

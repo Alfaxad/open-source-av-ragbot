@@ -17,7 +17,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.openai import OpenAILLMService, OpenAILLMContext
 
-from swahili_bot.server.bot.services.modal_services import ModalTunnelManager
+from server.bot.services.modal_services import ModalTunnelManager
 
 
 class ModalAyaLLMService(OpenAILLMService):

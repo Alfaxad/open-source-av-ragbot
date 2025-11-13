@@ -15,7 +15,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
-from swahili_bot.server.bot.services.modal_services import (
+from server.bot.services.modal_services import (
     ModalWebsocketTTSService,
     ModalTunnelManager,
 )

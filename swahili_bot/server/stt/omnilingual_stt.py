@@ -17,8 +17,8 @@ import sys
 import io
 import soundfile as sf
 
-# Import regional configuration
-from swahili_bot.server.common.const import SERVICE_REGIONS
+# Regional configuration
+SERVICE_REGIONS = ["us-west-1", "us-sanjose-1", "westus"]
 
 # Modal app configuration
 app = modal.App("swahili-omnilingual-transcription")
