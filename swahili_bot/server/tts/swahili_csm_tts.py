@@ -42,9 +42,8 @@ SAMPLE_RATE = 24000  # CSM models use 24kHz audio
     image=gpu_image,
     gpu="A10G",  # A10G is sufficient for this 1B parameter model
     timeout=30 * 60,  # 30 minutes
-    container_idle_timeout=5 * 60,  # 5 minutes idle timeout
+    scaledown_window=5 * 60,  # 5 minutes scaledown window
     enable_memory_snapshot=True,
-    regions=SERVICE_REGIONS,
 )
 class SwahiliTTS:
     @modal.enter(snap=True)

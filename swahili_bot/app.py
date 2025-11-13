@@ -103,7 +103,6 @@ def serve_frontend():
     image=bot_image,
     timeout=30 * MINUTES,
     enable_memory_snapshot=True,
-    regions=SERVICE_REGIONS,
 )
 class BotServer:
     """Bot server that manages individual conversation sessions."""

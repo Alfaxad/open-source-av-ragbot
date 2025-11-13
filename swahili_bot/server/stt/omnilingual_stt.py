@@ -45,9 +45,8 @@ SAMPLE_RATE = 16000
     image=gpu_image,
     gpu="A10G",  # A10G is cost-effective for this smaller model
     timeout=30 * 60,  # 30 minutes
-    container_idle_timeout=5 * 60,  # 5 minutes idle timeout
+    scaledown_window=5 * 60,  # 5 minutes scaledown window
     enable_memory_snapshot=True,
-    regions=SERVICE_REGIONS,
 )
 class SwahiliTranscriber:
     @modal.enter(snap=True)

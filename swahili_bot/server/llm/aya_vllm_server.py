@@ -50,10 +50,9 @@ def wait_for_server(port: int, timeout: int = 300):
     image=vllm_image,
     gpu="H100",  # H100 for optimal performance with this 13B model
     timeout=30 * 60,  # 30 minutes
-    container_idle_timeout=5 * 60,  # 5 minutes
+    scaledown_window=5 * 60,  # 5 minutes scaledown window
     enable_memory_snapshot=True,
     allow_concurrent_inputs=10,
-    regions=SERVICE_REGIONS,
 )
 class AyaLLM:
     @modal.enter(snap=True)
