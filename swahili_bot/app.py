@@ -14,7 +14,14 @@ bot_image = (
     .apt_install(
         "git",
         "ffmpeg",
+        "curl",
+        "build-essential",
     )
+    .run_commands(
+        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
+        "echo 'source $HOME/.cargo/env' >> $HOME/.bashrc",
+    )
+    .env({"PATH": "/root/.cargo/bin:$PATH"})
     .uv_pip_install(
         "pipecat-ai[webrtc,openai,silero,local-smart-turn,noisereduce,soundfile]==0.0.92",
         "websocket-client",
