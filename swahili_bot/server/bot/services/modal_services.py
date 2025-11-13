@@ -46,12 +46,12 @@ class ModalTunnelManager:
         self._modal_dict_id = None
         self._url_dict = None
         self.function_call = None
-
+        
         self._cls = modal.Cls.from_name(app_name, cls_name)(**self._cls_kwargs)
         if not self._lazy_spawn:
             self._modal_dict_id = str(uuid.uuid4())
             self._url_dict = modal.Dict.from_name(
-                f"{self._modal_dict_id}-url-dict",
+                f"{self._modal_dict_id}-url-dict", 
                 create_if_missing=True
             ).hydrate()
             self._spawn_service(self._url_dict)
@@ -88,7 +88,7 @@ class ModalTunnelManager:
 
 class ModalWebsocketService(WebsocketService):
     def __init__(
-        self,
+        self, 
         modal_tunnel_manager: ModalTunnelManager = None,
         websocket_url: str = None,
         reconnect_on_error: bool = True,
@@ -98,7 +98,7 @@ class ModalWebsocketService(WebsocketService):
 
         self.modal_tunnel_manager = modal_tunnel_manager
         self._websocket_url = websocket_url
-
+        
         if self.modal_tunnel_manager:
             logger.info(f"Using Modal Tunnels")
         elif self._websocket_url:
@@ -108,7 +108,7 @@ class ModalWebsocketService(WebsocketService):
 
         self._receive_task = None
 
-
+        
     async def _report_error(self, error: ErrorFrame):
         await self._call_event_handler("on_connection_error", error.error)
         await self.push_error(error)
@@ -123,7 +123,7 @@ class ModalWebsocketService(WebsocketService):
             await asyncio.sleep(0.100)
         if self._websocket_url is None:
             raise Exception("Failed to get websocket URL")
-
+        
         logger.info(f"Connecting to: {self._websocket_url}")
         await self._connect_websocket()
 
@@ -142,7 +142,7 @@ class ModalWebsocketService(WebsocketService):
 
             # Now close the websocket
             await self._disconnect_websocket()
-
+    
         except Exception as e:
             logger.error(f"Error during disconnect: {e}")
         finally:
@@ -193,7 +193,7 @@ class ModalWebsocketService(WebsocketService):
 
 class ModalWebsocketTTSService(TTSService, ModalWebsocketService):
     def __init__(
-        self,
+        self, 
         **kwargs
     ):
 
@@ -244,7 +244,7 @@ class ModalWebsocketTTSService(TTSService, ModalWebsocketService):
 
 class ModalWebsocketSegmentedSTTService(SegmentedSTTService, ModalWebsocketService):
     def __init__(
-        self,
+        self, 
         **kwargs
     ):
         SegmentedSTTService.__init__(self, **kwargs)
@@ -265,7 +265,7 @@ class ModalWebsocketSegmentedSTTService(SegmentedSTTService, ModalWebsocketServi
         """
         await super().start(frame)
         await self._connect()
-
+        
 
     async def stop(self, frame: EndFrame):
         """Stop the Websocket service.

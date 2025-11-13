@@ -1,20 +1,10 @@
-"""
-Swahili Voice AI Bot
-
-A conversational AI assistant that speaks Swahili using:
-- Omnilingual ASR (CTC-1B) for speech-to-text
-- Aya-101 for multilingual language understanding
-- Swahili CSM-1B for text-to-speech
-
-This bot provides a natural conversational experience in Swahili with ~1 second latency.
-"""
-
 import sys
 from loguru import logger
 
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 
 from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor
 
@@ -33,9 +23,13 @@ from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 from pipecat.frames.frames import LLMRunFrame
 
 from .services.modal_services import ModalTunnelManager
-from .services.modal_omnilingual_service import ModalOmnilingualSTTService
-from .services.modal_swahili_tts_service import ModalSwahiliTTSService
-from .services.modal_aya_service import ModalAyaLLMService
+from .services.modal_parakeet_service import ModalParakeetSegmentedSTTService
+from .services.modal_kokoro_service import ModalKokoroTTSService
+from .processors.unison_speaker_mixer import UnisonSpeakerMixer
+from .services.modal_openai_service import ModalOpenAILLMService
+from .processors.modal_rag import ModalRag, get_system_prompt, ChromaVectorDB
+
+from .avatar.animation import MoeDalBotAnimation, get_frames
 
 import modal
 
@@ -46,54 +40,27 @@ except ValueError:
     # Handle the case where logger is already initialized
     pass
 
-_AUDIO_INPUT_SAMPLE_RATE = 16000  # Omnilingual ASR uses 16kHz
-_AUDIO_OUTPUT_SAMPLE_RATE = 24000  # Swahili CSM uses 24kHz
+_AUDIO_INPUT_SAMPLE_RATE = 16000
+_AUDIO_OUTPUT_SAMPLE_RATE = 24000
+_MOE_AND_DAL_FRAME_RATE = 12
+_MOE_AND_DAL_FRAME_WIDTH = 1024
+_MOE_AND_DAL_FRAME_HEIGHT = 576
 
-
-def get_swahili_system_prompt() -> str:
-    """
-    Generate a comprehensive Swahili system prompt for a conversational assistant.
-
-    Inspired by conversational AI like Sesame's Maya, this creates a friendly,
-    helpful assistant that can discuss any topic naturally in Swahili.
-    """
-    return """Wewe ni msaidizi wa kirafiki na mwenye kueleweka anayeongea Kiswahili fasaha. Jina lako ni Rafiki.
-
-Sifa zako ni:
-1. **Urafiki na Heshima**: Unazungumza kwa urafiki na heshima, kwa kutumia lugha ya kawaida ya Kiswahili ambayo inaelewa kwa urahisi.
-
-2. **Uelewaji**: Unasikiliza kwa makini na kuelewa maswali na mahitaji ya mtumiaji. Unatoa majibu yanayofaa na ya kina.
-
-3. **Ujuzi Mpana**: Unaweza kujadili mada mbalimbali - elimu, sayansi, historia, utamaduni, burudani, teknolojia, afya, na mengineo. Unatoa maelezo ya kina lakini rahisi kuelewa.
-
-4. **Ufupi na Wazi**: Unatoa majibu mafupi lakini ya kutosha. Unaepuka maneno mengi yasiyo ya lazima. Unazungumza kama mtu wa kawaida, si kama roboti.
-
-5. **Lugha Safi**: Unatumia Kiswahili sanifu na fasaha. Unaepuka lugha ngumu au istilahi za kitaaluma zisizohitajika.
-
-6. **Ubunifu**: Unaweza kutoa mifano, hadithi, na maelezo ili kufanya mazungumzo kuwa ya kuvutia na ya kielimu.
-
-Miongozo ya Mazungumzo:
-- Jibu kwa lugha rahisi na ya kawaida
-- Kama hujaelewa swali, uliza maswali ya ziada kwa upole
-- Toa majibu ya kweli na sahihi
-- Kumbuka kuwa unaongea, si kuandika - tumia mtindo wa mazungumzo
-- Usirudierudisha maneno ya mtumiaji - jibu moja kwa moja
-- Kuwa na ucheshi wakati inafaa, lakini pia uzito wakati inahitajika
-
-Kumbuka: Wewe ni msaidizi wa Kiswahili ambaye anajua mada nyingi. Lengo lako ni kusaidia na kufundisha kwa njia ya kirafiki na rahisi kuelewa."""
-
+_DEFAULT_ENABLE_VIDEO = False
 
 async def run_bot(
     webrtc_connection: SmallWebRTCConnection,
+    chroma_db: ChromaVectorDB,
+    enable_moe_and_dal: bool = _DEFAULT_ENABLE_VIDEO,
 ):
     """Main bot execution function.
 
-    Sets up and runs the Swahili bot pipeline including:
-    - WebRTC transport with audio parameters
-    - Omnilingual ASR for Swahili STT
-    - Aya-101 LLM for conversation
-    - Swahili CSM-1B for TTS
+    Sets up and runs the bot pipeline including:
+    - WebRTC transport with audio/video parameters
+    - Structured RAG LLM service with vLLM backend
+    - Parakeet STT and Chatterbox TTS services
     - Voice activity detection and smart turn management
+    - Animation processing with talking animations
     - RTVI event handling
     """
 
@@ -102,7 +69,10 @@ async def run_bot(
         audio_in_sample_rate=_AUDIO_INPUT_SAMPLE_RATE,
         audio_out_enabled=True,
         audio_out_sample_rate=_AUDIO_OUTPUT_SAMPLE_RATE,
-        video_out_enabled=False,
+        video_out_enabled=enable_moe_and_dal,
+        video_out_width=_MOE_AND_DAL_FRAME_WIDTH,
+        video_out_height=_MOE_AND_DAL_FRAME_HEIGHT,
+        video_out_framerate=_MOE_AND_DAL_FRAME_RATE,
         vad_analyzer=SileroVADAnalyzer(
             params=VADParams(
                 stop_secs=0.2)
@@ -117,31 +87,24 @@ async def run_bot(
         params=transport_params,
     )
 
-    stt = ModalOmnilingualSTTService(
+    stt = ModalParakeetSegmentedSTTService(
         modal_tunnel_manager=ModalTunnelManager(
-            app_name="swahili-omnilingual-transcription",
-            cls_name="SwahiliTranscriber",
+            app_name="parakeet-transcription",
+            cls_name="Transcriber",
         ),
     )
 
-    tts = ModalSwahiliTTSService(
-        modal_tunnel_manager=ModalTunnelManager(
-            app_name="swahili-csm-tts",
-            cls_name="SwahiliTTS",
-        ),
-        speaker_id=22,  # Default speaker
-        max_tokens=250,  # ~20 seconds of audio
-    )
+    modal_rag = ModalRag(chroma_db=chroma_db, similarity_top_k=3, num_adjacent_nodes=2)
 
-    modal_aya_tunnel_manager = ModalTunnelManager(
-        app_name="swahili-aya-llm",
-        cls_name="AyaLLM",
+    modal_sglang_tunnel_manager = ModalTunnelManager(
+        app_name="sglang-server",
+        cls_name="SGLangServer",
     )
-    base_url = await modal_aya_tunnel_manager.get_url()
+    base_url = await modal_sglang_tunnel_manager.get_url()
 
-    llm = ModalAyaLLMService(
-        model="CohereForAI/aya-101",
-        modal_tunnel_manager=modal_aya_tunnel_manager,
+    llm = ModalOpenAILLMService(
+        model="Qwen/Qwen3-4B-Instruct-2507",
+        modal_tunnel_manager=modal_sglang_tunnel_manager,
         base_url=base_url,
         params=OpenAILLMService.InputParams(
             extra={
@@ -152,12 +115,12 @@ async def run_bot(
 
     messages = [
         {
-            "role": "system",
-            "content": get_swahili_system_prompt(),
+            "role": "system", 
+            "content": get_system_prompt(enable_moe_and_dal=enable_moe_and_dal),
         },
         {
             "role": "user",
-            "content": "Habari! Niambie kidogo kuhusu wewe.",
+            "content": "Hi, could the two of you introduce yourselves?",
         }
     ]
 
@@ -176,9 +139,53 @@ async def run_bot(
         transport.input(),
         rtvi,
         stt,
+        modal_rag,
         context_aggregator.user(),
         llm,
-        tts,
+        
+    ]
+    
+    # only add animation processor and dual speaker setup if video is enabled
+    if enable_moe_and_dal:
+        ta = MoeDalBotAnimation()
+        moe_tts = ModalKokoroTTSService(
+            modal_tunnel_manager=ModalTunnelManager(
+                app_name="kokoro-tts",
+                cls_name="KokoroTTS",
+            ),
+            speaker="moe",
+            voice="am_puck",
+            speed=1.3,
+        )
+        dal_tts = ModalKokoroTTSService(
+            modal_tunnel_manager=ModalTunnelManager(
+                app_name="kokoro-tts",
+                cls_name="KokoroTTS",
+            ),
+            speaker="dal",
+            voice="am_fenrir",
+            speed=1.5,
+        )
+        speaker_mixer = UnisonSpeakerMixer(speakers=["moe", "dal"])
+        processors += [
+            ParallelPipeline(
+                [moe_tts],
+                [dal_tts],
+            ),
+            speaker_mixer,
+            ta,
+        ]
+    else:
+        processors.append(ModalKokoroTTSService(
+            modal_tunnel_manager=ModalTunnelManager(
+                app_name="kokoro-tts",
+                cls_name="KokoroTTS",
+            ),
+            voice="am_puck",
+            speed=1.35,
+        ))
+
+    processors += [
         transport.output(),
         context_aggregator.assistant(),
     ]
@@ -200,7 +207,7 @@ async def run_bot(
         logger.info("Pipecat client ready.")
         await rtvi.set_bot_ready()
         await task.queue_frame(LLMRunFrame())
-
+        
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("Pipecat Client disconnected")
@@ -210,7 +217,8 @@ async def run_bot(
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         logger.info("Pipecat Client connected")
-
+        await task.queue_frame(get_frames("listening"))
+        
     runner = PipelineRunner()
     await runner.run(task)
 

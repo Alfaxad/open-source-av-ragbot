@@ -1,157 +1,165 @@
-"""
-Swahili Voice AI Chatbot - Main Application
-
-This Modal app serves the frontend and manages bot sessions.
-"""
+import asyncio
+from pathlib import Path
+import time
 
 import modal
-from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-import json
 
-# Regional configuration
-SERVICE_REGIONS = ["us-west-1", "us-sanjose-1", "westus"]
+from server import SERVICE_REGIONS
 
-# Define Modal app
 app = modal.App("swahili-voice-bot")
 
-# Frontend image - just copy the pre-built dist folder
-frontend_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .pip_install("fastapi[standard]==0.115.4")
-    .add_local_dir("client/dist", "/assets/client/dist")
-)
-
-# Bot image with Pipecat and dependencies
+# Container specifications for the Swahili bot pipeline
 bot_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("libsndfile1")
-    .pip_install(
-        "pipecat-ai[webrtc,openai,silero,local-smart-turn,noisereduce,soundfile]==0.0.92",
-        "fastapi[standard]==0.115.4",
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install(
+        "git",
+        "ffmpeg",
     )
-    .add_local_python_source("server")
+    .uv_pip_install(
+        "pipecat-ai[webrtc,openai,silero,local-smart-turn,noisereduce,soundfile]==0.0.92",
+        "websocket-client",
+        "aiofiles",
+        "fastapi[standard]",
+        "huggingface_hub[hf_transfer]",
+    )
+    .env({
+        "HF_HUB_ENABLE_HF_TRANSFER": "1",
+    })
+    .add_local_dir("server", remote_path="/root/server")
 )
 
-MINUTES = 60
+MINUTES = 60  # seconds in a minute
 
+with bot_image.imports():
+    from loguru import logger
+    from pipecat.transports.smallwebrtc.connection import (
+        IceServer,
+        SmallWebRTCConnection,
+    )
 
-@app.function(image=frontend_image)
-@modal.asgi_app()
-def serve_frontend():
-    """Serve the React frontend and handle WebRTC connections."""
-    web_app = FastAPI()
-
-    # Serve static files (built React app)
-    dist_path = Path("/assets/client/dist")
-
-    if not dist_path.exists():
-        print(f"ERROR: dist_path {dist_path} does not exist!")
-        print(f"Available paths: {list(Path('/assets/client').iterdir())}")
-
-    # Mount assets directory
-    assets_path = dist_path / "assets"
-    if assets_path.exists():
-        web_app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
-    else:
-        print(f"WARNING: assets path {assets_path} does not exist!")
-
-    @web_app.get("/")
-    async def read_root():
-        index_file = dist_path / "index.html"
-        if not index_file.exists():
-            print(f"ERROR: index.html not found at {index_file}")
-            return JSONResponse({"error": "index.html not found"}, status_code=500)
-        return FileResponse(str(index_file))
-
-    @web_app.post("/offer")
-    async def handle_offer(request: dict):
-        """
-        Handle WebRTC offer from client and spawn bot session.
-
-        The client sends an SDP offer with optional speaker_id parameter.
-        We spawn a bot session and return the SDP answer.
-        """
-        sdp = request.get("sdp")
-        speaker_id = request.get("speaker_id", 22)  # Default speaker ID
-
-        if not sdp:
-            return JSONResponse({"error": "No SDP provided"}, status_code=400)
-
-        # Create connection data
-        connection_data = modal.Dict.from_name(
-            f"webrtc-connection",
-            create_if_missing=True,
-        )
-
-        # Store the offer
-        await connection_data.put.aio("offer", sdp)
-        await connection_data.put.aio("speaker_id", speaker_id)
-
-        # Spawn bot server
-        bot_server = BotServer()
-        await bot_server.serve_bot.remote.aio(connection_data)
-
-        # Get the answer
-        answer = await connection_data.get.aio("answer")
-
-        return JSONResponse({"sdp": answer})
-
-    return web_app
-
+    from server.bot.swahili_bot import run_bot
 
 @app.cls(
     image=bot_image,
     timeout=30 * MINUTES,
+    region=SERVICE_REGIONS,
     enable_memory_snapshot=True,
+    max_inputs=1,
 )
 class BotServer:
-    """Bot server that manages individual conversation sessions."""
 
     @modal.method()
-    async def serve_bot(self, connection_data: modal.Dict):
-        """
-        Serve a bot session for a WebRTC connection.
+    async def serve_bot(self, d: modal.Dict):
+        """Launch the Swahili bot process with WebRTC connection.
 
         Args:
-            connection_data: Modal Dict containing connection parameters
+            d (modal.Dict): A dictionary containing the WebRTC offer and ICE servers configuration.
+
+        Raises:
+            RuntimeError: If the bot pipeline fails to start or encounters an error.
         """
-        from server.bot.swahili_bot import run_bot
-        from loguru import logger
 
-        # Get connection parameters
-        offer = await connection_data.get.aio("offer")
-        speaker_id = await connection_data.get.aio("speaker_id", 22)
+        try:
+            offer = await d.get.aio("offer")
+            ice_servers = await d.get.aio("ice_servers")
+            ice_servers = [
+                IceServer(
+                    **ice_server,
+                )
+                for ice_server in ice_servers
+            ]
 
-        logger.info(f"Starting bot session with speaker_id={speaker_id}")
+            webrtc_connection = SmallWebRTCConnection(ice_servers)
+            await webrtc_connection.initialize(sdp=offer["sdp"], type=offer["type"])
 
-        # Create WebRTC connection object
-        webrtc_connection = type(
-            "WebRTCConnection",
-            (),
+            @webrtc_connection.event_handler("closed")
+            async def handle_disconnected(webrtc_connection: SmallWebRTCConnection):
+                logger.info("WebRTC connection to Swahili bot closed.")
+
+            print("Starting Swahili bot process.")
+            bot_task = asyncio.create_task(
+                run_bot(webrtc_connection)
+            )
+
+            answer = webrtc_connection.get_answer()
+            await d.put.aio("answer", answer)
+
+            await bot_task
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to start Swahili bot pipeline: {e}")
+
+    @modal.method()
+    def ping(self):
+        return "pong"
+
+
+frontend_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .pip_install("fastapi==0.115.12")
+    .add_local_dir("server", remote_path="/root/server")
+    .add_local_dir(
+        Path(__file__).parent / "client/dist",
+        remote_path="/frontend",
+    )
+)
+
+with frontend_image.imports():
+    from fastapi import FastAPI
+    from fastapi.responses import HTMLResponse
+    from fastapi.staticfiles import StaticFiles
+
+@app.function(image=frontend_image)
+@modal.asgi_app()
+@modal.concurrent(max_inputs=100)
+def serve_frontend():
+    """Create and configure the FastAPI application for Swahili bot frontend.
+
+    This function initializes the FastAPI app with middleware, routes, and lifespan management.
+    It is decorated to be used as a Modal ASGI app.
+    """
+
+    web_app = FastAPI()
+
+    static_files = StaticFiles(directory="/frontend")
+    web_app.mount("/frontend", static_files)
+
+    @web_app.get("/")
+    async def root():
+        return HTMLResponse(content=open("/frontend/index.html").read())
+
+    @web_app.post("/offer")
+    async def offer(offer: dict):
+
+        _ICE_SERVERS = [
             {
-                "offer": offer,
-                "answer_dict": connection_data,
-                "answer_key": "answer",
-            },
-        )()
+                "urls": "stun:stun.l.google.com:19302",
+            }
+        ]
 
-        # Run the bot
-        await run_bot(webrtc_connection, speaker_id=speaker_id)
+        with modal.Dict.ephemeral() as d:
 
-        logger.info("Bot session ended")
+            await d.put.aio("ice_servers", _ICE_SERVERS)
+            await d.put.aio("offer", offer)
 
+            BotServer().serve_bot.spawn(d)
 
-@app.local_entrypoint()
-def main():
-    """Deploy and test the application."""
-    print("Swahili Voice AI Chatbot")
-    print("=" * 50)
-    print("\nDeploying application...")
-    print("\nOnce deployed, visit the URL shown above to interact with the bot.")
-    print("\nYou can:")
-    print("- Speak in Swahili and the bot will respond")
-    print("- Adjust the speaker ID to change the voice")
-    print("- Have natural conversations on any topic")
+            while True:
+                answer = await d.get.aio("answer")
+                if answer:
+                    return answer
+                await asyncio.sleep(0.1)
+
+    return web_app
+
+# warm up snapshots if needed
+if __name__ == "__main__":
+    bot_server = modal.Cls.from_name("swahili-voice-bot", "BotServer")
+    num_cold_starts = 5
+    for _ in range(num_cold_starts):
+        start_time = time.time()
+        bot_server().ping.remote()
+        end_time = time.time()
+        print(f"Time taken to ping: {end_time - start_time:.3f} seconds")
+        time.sleep(10.0)  # allow container to drain
+    print(f"BotServer cold starts: {num_cold_starts}")
