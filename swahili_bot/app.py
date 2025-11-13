@@ -40,7 +40,6 @@ bot_image = (
     .pip_install(
         "pipecat-ai[webrtc,openai,silero,local-smart-turn,noisereduce,soundfile]==0.0.92",
         "fastapi[standard]==0.115.4",
-        "openai==1.57.2",
     )
     .add_local_python_source("server")
 )
