@@ -45,11 +45,25 @@ def serve_frontend():
 
     # Serve static files (built React app)
     dist_path = Path("/assets/client/dist")
-    web_app.mount("/assets", StaticFiles(directory=dist_path / "assets"), name="assets")
+
+    if not dist_path.exists():
+        print(f"ERROR: dist_path {dist_path} does not exist!")
+        print(f"Available paths: {list(Path('/assets/client').iterdir())}")
+
+    # Mount assets directory
+    assets_path = dist_path / "assets"
+    if assets_path.exists():
+        web_app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+    else:
+        print(f"WARNING: assets path {assets_path} does not exist!")
 
     @web_app.get("/")
     async def read_root():
-        return FileResponse(dist_path / "index.html")
+        index_file = dist_path / "index.html"
+        if not index_file.exists():
+            print(f"ERROR: index.html not found at {index_file}")
+            return JSONResponse({"error": "index.html not found"}, status_code=500)
+        return FileResponse(str(index_file))
 
     @web_app.post("/offer")
     async def handle_offer(request: dict):
