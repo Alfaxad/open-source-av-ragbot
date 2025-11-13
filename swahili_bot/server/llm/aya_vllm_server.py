@@ -61,7 +61,6 @@ class AyaLLM:
             "--gpu-memory-utilization", "0.90",
             "--dtype", "auto",
             "--enable-chunked-prefill",
-            "--enable-prefix-caching",
             "--port", str(UVICORN_PORT),
             "--host", "0.0.0.0",
         ]

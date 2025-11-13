@@ -35,7 +35,7 @@ UVICORN_PORT = 8000
 with omnilingual_image.imports():
     import numpy as np
     import torch
-    from omnilingual_asr.pipeline import ASRInferencePipeline
+    from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline
     from fastapi import FastAPI, WebSocket
     import uvicorn
 
