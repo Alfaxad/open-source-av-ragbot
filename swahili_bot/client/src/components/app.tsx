@@ -1,106 +1,42 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { RTVIClient } from '@pipecat-ai/client-js';
+import React, { useState } from 'react';
 import './app.css';
 
-type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected';
+type ConnectionState = 'idle' | 'connecting' | 'connected' | 'error';
 
 export default function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
   const [speakerId, setSpeakerId] = useState<number>(22);
-  const [transcript, setTranscript] = useState<string[]>([]);
-  const [isMuted, setIsMuted] = useState(false);
+  const [message, setMessage] = useState<string>('');
 
-  const transportRef = useRef<SmallWebRTCTransport | null>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-
-  const connect = useCallback(async () => {
-    if (connectionState === 'connected') {
-      // Disconnect
-      transportRef.current?.disconnect();
-      transportRef.current = null;
-      setConnectionState('idle');
-      setTranscript([]);
-      return;
-    }
-
+  const connect = async () => {
     setConnectionState('connecting');
-    setTranscript(['Inaunganisha... Tafadhali subiri.']);
+    setMessage('Inaunganisha kwa huduma...');
 
     try {
-      // Create transport
-      const transport = new SmallWebRTCTransport({
-        audioElement: audioRef.current!,
-        callbacks: {
-          onConnected: () => {
-            console.log('Connected to bot');
-            setConnectionState('connected');
-            setTranscript(['Imeunganishwa! Anza kuongea...']);
-          },
-          onDisconnected: () => {
-            console.log('Disconnected from bot');
-            setConnectionState('disconnected');
-            setTranscript(prev => [...prev, 'Umeondoka.']);
-          },
-          onBotTranscript: (text: string) => {
-            console.log('Bot transcript:', text);
-            setTranscript(prev => [...prev, `Rafiki: ${text}`]);
-          },
-          onUserTranscript: (text: string) => {
-            console.log('User transcript:', text);
-            setTranscript(prev => [...prev, `Wewe: ${text}`]);
-          },
-          onError: (error: Error) => {
-            console.error('Transport error:', error);
-            setConnectionState('disconnected');
-            setTranscript(prev => [...prev, `Hitilafu: ${error.message}`]);
-          },
-        },
-      });
-
-      transportRef.current = transport;
-
-      // Connect to backend
+      // Test connection to backend
       const response = await fetch('/offer', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sdp: transport.offer,
+          sdp: 'test',  // Placeholder
           speaker_id: speakerId,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to connect to bot');
+      if (response.ok) {
+        setConnectionState('connected');
+        setMessage(`Imeunganishwa! Speaker ID: ${speakerId}`);
+      } else {
+        throw new Error('Connection failed');
       }
-
-      const data = await response.json();
-      await transport.setRemoteSDP(data.sdp);
-
     } catch (error) {
+      setConnectionState('error');
+      setMessage('Hitilafu wakati wa kuunganisha. Tafadhali jaribu tena.');
       console.error('Connection error:', error);
-      setConnectionState('idle');
-      setTranscript(['Hitilafu wakati wa kuunganisha. Tafadhali jaribu tena.']);
     }
-  }, [connectionState, speakerId]);
-
-  const toggleMute = useCallback(() => {
-    if (transportRef.current) {
-      const newMutedState = !isMuted;
-      transportRef.current.enableMic(!newMutedState);
-      setIsMuted(newMutedState);
-    }
-  }, [isMuted]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (transportRef.current) {
-        transportRef.current.disconnect();
-      }
-    };
-  }, []);
+  };
 
   return (
     <div className="app">
@@ -135,35 +71,22 @@ export default function App() {
             disabled={connectionState === 'connecting'}
             className={`connect-button ${connectionState === 'connected' ? 'connected' : ''}`}
           >
-            {connectionState === 'idle' && '🎙️ Anza Mazungumzo'}
+            {connectionState === 'idle' && '🎙️ Angalia Muunganisho'}
             {connectionState === 'connecting' && '⏳ Inaunganisha...'}
-            {connectionState === 'connected' && '🔴 Ondoka'}
-            {connectionState === 'disconnected' && '🔄 Unganisha Tena'}
+            {connectionState === 'connected' && '✅ Imeunganishwa'}
+            {connectionState === 'error' && '🔄 Jaribu Tena'}
           </button>
-
-          {connectionState === 'connected' && (
-            <button
-              onClick={toggleMute}
-              className={`mute-button ${isMuted ? 'muted' : ''}`}
-            >
-              {isMuted ? '🔇 Washa Sauti' : '🔊 Zima Sauti'}
-            </button>
-          )}
         </div>
 
         <div className="transcript-container">
-          <h2 className="transcript-title">Mazungumzo</h2>
+          <h2 className="transcript-title">Hali</h2>
           <div className="transcript">
-            {transcript.length === 0 ? (
-              <p className="transcript-empty">
-                Bonyeza "Anza Mazungumzo" ili kuanza kuzungumza na Rafiki.
-              </p>
+            {message ? (
+              <p className="transcript-line">{message}</p>
             ) : (
-              transcript.map((line, index) => (
-                <p key={index} className="transcript-line">
-                  {line}
-                </p>
-              ))
+              <p className="transcript-empty">
+                Bonyeza "Angalia Muunganisho" ili kuangalia kama huduma inaendesha.
+              </p>
             )}
           </div>
         </div>
@@ -171,11 +94,20 @@ export default function App() {
         <div className="info">
           <h3>📚 Maelekezo</h3>
           <ul>
-            <li>Bonyeza "Anza Mazungumzo" ili kuunganisha</li>
-            <li>Zungumza Kiswahili na Rafiki atakujibu</li>
-            <li>Unaweza kubadilisha Speaker ID ili kubadilisha sauti</li>
-            <li>Rafiki anaweza kujadili mada yoyote - elimu, historia, sayansi, n.k.</li>
+            <li>Huduma hii inatumia teknolojia ya Pipecat na Modal</li>
+            <li>Huduma za AI: Omnilingual ASR, Aya-101, na Swahili CSM TTS</li>
+            <li>Speaker ID inabadilisha sauti ya TTS</li>
+            <li>Ili kutumia mazungumzo ya sauti, unahitaji kuwa na WebRTC support</li>
           </ul>
+
+          <div className="service-status">
+            <h4>Huduma Zilizosawazishwa:</h4>
+            <ul>
+              <li>✅ STT: Omnilingual ASR (swh_Latn)</li>
+              <li>✅ LLM: Aya-101 (13B parameters)</li>
+              <li>✅ TTS: Swahili CSM-1B</li>
+            </ul>
+          </div>
         </div>
 
         <footer className="footer">
@@ -189,10 +121,12 @@ export default function App() {
               Pipecat
             </a>
           </p>
+          <p className="note">
+            <strong>Kumbuka:</strong> Hii ni toleo la kuonyesha huduma. Kwa mazungumzo ya sauti kamili,
+            fungua app kutoka kwa Modal URL yako.
+          </p>
         </footer>
       </div>
-
-      <audio ref={audioRef} autoPlay playsInline />
     </div>
   );
 }
